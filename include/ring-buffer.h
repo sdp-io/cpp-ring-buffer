@@ -6,6 +6,8 @@
 
 // NOTE: Rule of 5 and Rule of 0. Remember what they are and WHY
 
+// NOTE: Remember move semantics, l-values, r-values!
+
 template <std::movable T> class RingBuffer
 {
 public:
@@ -14,20 +16,29 @@ public:
   RingBuffer(const RingBuffer& rb) : capacity{rb.capacity}
   { deep_copy(rb); }
 
-  RingBuffer(const RingBuffer&& rb) : capacity{rb.capacity}
-  { deep_copy(rb); }
+  RingBuffer(RingBuffer&& rb) noexcept
+      : capacity{rb.capacity}, ring_buffer{rb.ring_buffer}, read{rb.read}, write{rb.write},
+        count{rb.count}
+  {
+    rb.capacity = 0;
+    rb.ring_buffer = nullptr;
+    rb.read = 0;
+    rb.write = 0;
+    rb.count = 0;
+  }
 
   RingBuffer<T>& operator=(const RingBuffer& rb);
+
+  RingBuffer<T>& operator=(RingBuffer&& rb);
 
   ~RingBuffer()
   { delete[] ring_buffer; }
 
-  // NOTE: Remember move semantics, l-values, r-values!
-  void enqueue(const T& item)
-  { add_item(item); }
+  // NOTE: This implementation silently overwrites when full. Other implementations
+  // May throw or notify the user.
+  void enqueue(const T& item);
 
-  void enqueue(const T&& item)
-  { add_item(item); }
+  void enqueue(T&& item);
 
   bool is_empty()
   { return count == 0; }
@@ -42,13 +53,21 @@ private:
   size_t count{0};
 
   void deep_copy(const RingBuffer& source);
-
-  void add_item(const T& item);
 };
 
-template <std::movable T> void RingBuffer<T>::add_item(const T& item)
+template <std::movable T> void RingBuffer<T>::enqueue(const T& item)
 {
   ring_buffer[write] = item;
+  write = (write + 1) % capacity;
+
+  if (count != capacity) {
+    count++;
+  }
+}
+
+template <std::movable T> void RingBuffer<T>::enqueue(T&& item)
+{
+  ring_buffer[write] = std::move(item);
   write = (write + 1) % capacity;
 
   if (count != capacity) {
@@ -81,16 +100,44 @@ template <std::movable T> void RingBuffer<T>::deep_copy(const RingBuffer& source
   ring_buffer = new T[capacity];
 
   for (size_t i{0}; i < source.count; ++i) {
-    ring_buffer[i] = source.ring_buffer[i];
+    size_t idx{(source.read + i) % source.capacity}; // Start from read pointer and wrap around
+    ring_buffer[i] = source.ring_buffer[idx];
     count++;
   }
 }
 
 template <std::movable T> RingBuffer<T>& RingBuffer<T>::operator=(const RingBuffer<T>& rb)
 {
+  if (this == &rb) {
+    return *this;
+  }
+
   capacity = rb.capacity;
 
   deep_copy(rb);
+
+  return *this;
+}
+
+template <std::movable T> RingBuffer<T>& RingBuffer<T>::operator=(RingBuffer<T>&& rb)
+{
+  if (this == &rb) {
+    return *this;
+  }
+
+  delete[] ring_buffer;
+
+  capacity = rb.capacity;
+  ring_buffer = rb.ring_buffer;
+  read = rb.read;
+  write = rb.write;
+  count = rb.count;
+
+  rb.capacity = 0;
+  rb.ring_buffer = nullptr;
+  rb.read = 0;
+  rb.write = 0;
+  rb.count = 0;
 
   return *this;
 }
