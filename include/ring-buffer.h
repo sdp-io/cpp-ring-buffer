@@ -98,12 +98,15 @@ template <std::movable T> void RingBuffer<T>::deep_copy(const RingBuffer& source
   delete[] ring_buffer;
 
   ring_buffer = new T[capacity];
-
+  read = 0;
+  write = 0;
+  count = 0;
   for (size_t i{0}; i < source.count; ++i) {
     size_t idx{(source.read + i) % source.capacity}; // Start from read pointer and wrap around
     ring_buffer[i] = source.ring_buffer[idx];
     count++;
   }
+  write = count % capacity;
 }
 
 template <std::movable T> RingBuffer<T>& RingBuffer<T>::operator=(const RingBuffer<T>& rb)
